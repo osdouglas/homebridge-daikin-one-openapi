@@ -4,6 +4,20 @@ Homebridge platform plugin for Daikin One+ thermostats using the Daikin One Open
 
 The plugin authenticates with `apiKey`, `integratorEmail`, and `integratorToken` against `https://integrator-api.daikinskyport.com`.
 
+## Project Shape
+
+This project should be boring. It maps the Daikin One Open API to Homebridge/HomeKit with as little policy as possible.
+
+The code should only need to change when Homebridge, HomeKit, or the Daikin Open API contract changes. Normal API contents, device counts, optional fields, zoned/non-zoned setups, and runtime cloud behavior should be handled by configuration, tolerant parsing, tests, or logging.
+
+Design rules:
+
+- Keep Homebridge wiring, Open API transport, payload normalization, and thermostat policy separate.
+- Prefer small functions and narrow interfaces over framework-shaped abstractions.
+- Keep the Open API client injectable enough to test, but do not hide the API behind a second domain model.
+- Treat unknown or missing Open API fields as data, not as reasons to crash.
+- Add tests at the adapter boundary: API payloads in, HomeKit values and Daikin write payloads out.
+
 ## Target Setup
 
 The first target system is a Daikin FIT communicating HVAC system with a DH6V communicating air handler, Daikin One+ Smart Thermostat, and dual-zone configuration managed through the SkyportHome / Daikin One cloud platform.
@@ -30,9 +44,20 @@ When installed in Homebridge, the plugin exposes `apiKey`, `integratorEmail`, an
 }
 ```
 
-Open API polling is kept at a minimum of 180 seconds to respect Daikin Open API rate guidance.
-
 `deviceIds` can be used to expose only selected thermostats/zones after discovery. Leave it empty at first, enable `debug` temporarily, and the startup log will show the device count returned by the Open API.
+
+## Polling And Writes
+
+Regular cloud polling is kept at a minimum of 180 seconds. That protects the Open API integration from noisy HomeKit refreshes and keeps the plugin polite to Daikin's cloud.
+
+HomeKit does not have to wait for the next regular poll after a write. When HomeKit changes mode or setpoints, the plugin:
+
+1. sends the Daikin `PUT /v1/devices/{deviceId}/msp` request,
+2. treats a successful HTTP response as the write acknowledgment,
+3. updates the local HomeKit-facing state immediately from the accepted write payload,
+4. schedules a confirmatory cloud refresh shortly after the write.
+
+That gives HomeKit quick feedback without polling the cloud aggressively. If Daikin later exposes a stronger write result, event stream, webhook, or push mechanism through the Open API, that should replace or supplement the short confirmatory refresh.
 
 ## Testing With Real Credentials
 
@@ -70,6 +95,7 @@ Start in `readonly` mode first. Once discovery and state updates look right, set
 - HomeKit expects Celsius values for thermostat characteristics. Daikin One Open API temperature values are treated as Celsius.
 - Writes use `PUT /v1/devices/{deviceId}/msp` with `mode`, `heatSetpoint`, and `coolSetpoint`.
 - Setpoint min, max, and auto-mode heat/cool separation are read from the Open API when present.
+- Successful writes update HomeKit immediately, then reconcile against the cloud shortly afterward.
 - Set `readonly` to `true` while validating a new system if you want HomeKit to display state without sending mode or setpoint changes.
 - Set `logRaw` only temporarily. It may log device IDs and detailed HVAC state. This is the first thing to enable if your dual-zone system appears in the Daikin One app but Homebridge only creates one thermostat; the raw response will show whether Daikin exposes zones as separate devices or nested data.
 
@@ -93,3 +119,5 @@ npm test
 ```
 
 Keep unit tests focused on the thin adapter behavior: mocked Open API responses in, Homebridge/HomeKit-facing values and Daikin write payloads out. Live cloud testing should stay manual and use `readonly` mode first.
+
+CI runs the same lint and test checks on pull requests and pushes.
