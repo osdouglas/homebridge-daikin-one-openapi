@@ -6,13 +6,13 @@
   "author": "osdouglas",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/osdouglas/homebridge-daikin-one-openapi#readme",
+  "homepage": "https://github.com/osdouglas/homebridge-daikon-plus#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/osdouglas/homebridge-daikin-one-openapi.git"
+    "url": "git+https://github.com/osdouglas/homebridge-daikon-plus.git"
   },
   "bugs": {
-    "url": "https://github.com/osdouglas/homebridge-daikin-one-openapi/issues"
+    "url": "https://github.com/osdouglas/homebridge-daikon-plus/issues"
   },
   "main": "dist/index.js",
   "files": [

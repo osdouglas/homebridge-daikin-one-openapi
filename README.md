@@ -165,7 +165,7 @@ For the standard Homebridge Raspberry Pi image, load the Homebridge runtime envi
 ```sh
 sudo -u homebridge env HOME=/home/homebridge sh -lc '
   . /opt/homebridge/source.sh
-  npm install --prefix /var/lib/homebridge github:osdouglas/homebridge-daikin-one-openapi#codex/branding
+  npm install --prefix /var/lib/homebridge github:osdouglas/homebridge-daikon-plus#codex/branding
 '
 
 sudo hb-service restart
