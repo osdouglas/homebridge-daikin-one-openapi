@@ -337,6 +337,7 @@ export class DaikinOpenApiClient {
         .catch(error => this.logError('Scheduled Daikin refresh failed.', error))
         .finally(() => this.scheduleRefresh(this.pollIntervalMs));
     }, delayMs);
+    this.refreshTimer.unref?.();
   }
 
   private notify(deviceId: string): void {
