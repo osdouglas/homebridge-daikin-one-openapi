@@ -1,5 +1,6 @@
 import type { PlatformConfig } from 'homebridge';
 
+import { DEFAULT_PLATFORM_NAME } from './settings.js';
 import type { DaikinPlatformConfig } from './types.js';
 
 export interface ConfigParseSuccess {
@@ -28,7 +29,7 @@ export function parsePlatformConfig(config: PlatformConfig): ConfigParseResult {
   return {
     ok: true,
     config: {
-      name: typeof config.name === 'string' && config.name.length > 0 ? config.name : 'Daikon Plus',
+      name: typeof config.name === 'string' && config.name.length > 0 ? config.name : DEFAULT_PLATFORM_NAME,
       apiKey: String(config.apiKey),
       integratorEmail: String(config.integratorEmail),
       integratorToken: String(config.integratorToken),

@@ -17,7 +17,7 @@ import type { AccessoryContext, DaikinDevice, DaikinPlatformConfig } from './typ
 export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
-  public readonly config?: DaikinPlatformConfig;
+  private readonly platformConfig?: DaikinPlatformConfig;
   private readonly daikinClient?: DaikinOpenApiClient;
   private readonly accessories: PlatformAccessory<AccessoryContext>[] = [];
 
@@ -38,8 +38,8 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
       return;
     }
 
-    this.config = parsed.config;
-    this.daikinClient = new DaikinOpenApiClient(this.config, log);
+    this.platformConfig = parsed.config;
+    this.daikinClient = new DaikinOpenApiClient(this.platformConfig, log);
 
     api.on('didFinishLaunching', () => {
       void this.discover();
@@ -58,11 +58,18 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
     return this.daikinClient;
   }
 
+  public get config(): DaikinPlatformConfig {
+    if (!this.platformConfig) {
+      throw new Error('Daikin Open API config is unavailable because the platform is not configured.');
+    }
+    return this.platformConfig;
+  }
+
   public accessoryName(device: DaikinDevice, suffix: string): string {
-    if (this.config?.includeDeviceName) {
+    if (this.config.includeDeviceName) {
       return suffix ? `${device.name} ${suffix}` : device.name;
     }
-    return suffix || this.config?.name || 'Daikon Plus';
+    return suffix || this.config.name;
   }
 
   private async discover(): Promise<void> {

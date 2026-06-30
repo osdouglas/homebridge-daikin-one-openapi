@@ -7,10 +7,13 @@ test('does not register launch discovery when required config is missing', () =>
   const api = fakeApi();
   const log = fakeLog();
 
-  assert.doesNotThrow(() => new DaikinOpenApiPlatform(log, { platform: 'DaikonPlus' }, api));
+  const platform = new DaikinOpenApiPlatform(log, { platform: 'DaikonPlus' }, api);
+
   assert.equal(api.callbacks.length, 0);
   assert.equal(log.warnMessages.length, 1);
   assert.match(log.warnMessages[0], /not configured/);
+  assert.throws(() => platform.config, /config is unavailable/);
+  assert.throws(() => platform.client, /client is unavailable/);
 });
 
 test('registers launch discovery when required config is present', () => {
