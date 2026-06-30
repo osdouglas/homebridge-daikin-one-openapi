@@ -19,6 +19,7 @@
     "dist",
     "config.schema.json",
     "README.md",
+    "DEVELOPMENT.md",
     "DESIGN.md"
   ],
   "engines": {
