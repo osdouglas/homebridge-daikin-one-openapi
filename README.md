@@ -38,11 +38,27 @@ When installed in Homebridge, the plugin exposes `apiKey`, `integratorEmail`, an
 
 The integrator token email alone is not enough to run the plugin. The Daikin Open API flow also requires an API key for the integration.
 
-Per Daikin's docs:
+## Getting Open API Credentials
 
-- The thermostat owner requests the Integrator Token in the SkyportHome app under `SkyportCare` -> `home integration` -> `get integration token`.
-- The developer requests an API Key from the same app after enabling the developer menu.
-- Requests send `x-api-key`; all requests except `POST /v1/token` also send `Authorization: Bearer ...`.
+Follow Daikin's [Open API documentation](https://www.daikinone.com/openapi/documentation/index.html). The summary below is a local copy of the expected flow as documented by Daikin at the time this repository was written.
+
+Definitions:
+
+- Owner: the entity using the integration to control the system.
+- Developer: the entity performing the Open API integration. For development, this may be the same entity as the owner.
+
+Steps:
+
+1. The owner installs the SkyportHome app, creates an account, and follows the app instructions to add thermostats.
+2. The owner requests the Integrator Token in the SkyportHome app: `SkyportCare` -> `home integration` -> `get integration token`. The owner must agree to the Integration Token Terms, enter their password, and follow the app instructions.
+3. The developer requests an API Key from the same homeowner app after enabling the developer menu.
+4. On iOS, enable the developer menu from the iOS Settings app: `SkyportHome` -> developer menu.
+5. On Android, open the Home App, go to `SkyportCare` -> `home integration`, then tap the page description 5 times to enable the developer menu.
+6. After the developer menu is enabled, go to `SkyportCare` -> `home integration` -> `developer`, accept the Daikin B2B Terms and Daikin One Open API License Terms, enter the application name, and submit the request.
+
+Keep the API Key and Integrator Token secure. Daikin's [API Terms](https://www.daikinone.com/openapi/overview/terms/index.html) say not to forward either credential to a third party.
+
+Requests send `x-api-key`; all requests except `POST /v1/token` also send `Authorization: Bearer ...`.
 
 ```json
 {
