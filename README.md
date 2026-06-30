@@ -1,4 +1,4 @@
-# 🫜 Homebridge Daikon Plus
+# 🫜 Daikon Plus
 
 Homebridge platform plugin for Daikin One+ thermostats using the official Daikin One Open API.
 
