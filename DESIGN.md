@@ -35,6 +35,8 @@ The source is TypeScript because Homebridge and HAP expose useful types for plat
 
 Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`; the repository does not commit it. Git branch installs are supported by the npm `prepare` script, which builds `dist` after npm clones the branch.
 
+The `prepare` script calls `node scripts/build.mjs` directly. Do not make `prepare` call `npm run build`; some Homebridge installations invoke npm through an explicit Node path and do not put `npm` on the lifecycle script `PATH`.
+
 Do not add a TypeScript runtime or loader to Homebridge. Build before runtime instead.
 
 ## Polling And Writes
