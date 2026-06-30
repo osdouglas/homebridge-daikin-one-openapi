@@ -95,34 +95,24 @@ That gives HomeKit quick feedback without polling the cloud aggressively. Daikin
 
 ## Testing With Real Credentials
 
-Do not put a real Daikin token in a file committed to this repository. For manual testing, use a separate Homebridge instance or child bridge and enter the Open API values through Homebridge UI.
+Do not put a real Daikin token in a file committed to this repository. For manual testing, configure Daikon Plus on the Homebridge host that will run it. A separate Homebridge instance or child bridge is useful while validating a new HVAC setup.
 
-A local test `config.json` should live outside the repo, for example in `~/.homebridge-daikin-test/config.json`:
+Start with:
 
 ```json
 {
-  "bridge": {
-    "name": "Daikin Test Bridge",
-    "username": "0E:11:22:33:44:55",
-    "port": 51877,
-    "pin": "031-45-154"
-  },
-  "platforms": [
-    {
-      "platform": "DaikonPlus",
-      "name": "Daikon Plus",
-      "apiKey": "your-daikin-open-api-key",
-      "integratorEmail": "email-used-in-the-daikin-one-app@example.com",
-      "integratorToken": "your-integrator-token",
-      "readonly": true,
-      "debug": true,
-      "logRaw": true
-    }
-  ]
+  "platform": "DaikonPlus",
+  "name": "Daikon Plus",
+  "apiKey": "your-daikin-open-api-key",
+  "integratorEmail": "email-used-in-the-daikin-one-app@example.com",
+  "integratorToken": "your-integrator-token",
+  "readonly": true,
+  "debug": true,
+  "logRaw": true
 }
 ```
 
-Start in `readonly` mode first. Once discovery and state updates look right, set `logRaw` back to `false`, then set `readonly` to `false` for write testing.
+Once discovery and state updates look right, set `logRaw` back to `false`, then set `readonly` to `false` for write testing.
 
 ## Notes
 
