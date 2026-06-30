@@ -29,6 +29,14 @@ Keep these boundaries narrow. If a change crosses several files, it should be be
 
 SOLID matters here as a constraint on drift, not as ceremony. The goal is code that is easy to keep current when the external contracts move.
 
+## Language And Packaging
+
+The source is TypeScript because Homebridge and HAP expose useful types for platform plugins, services, characteristics, and config objects. Those types catch adapter mistakes while keeping the runtime simple.
+
+Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`; the repository does not commit it. Git branch installs are supported by the npm `prepare` script, which builds `dist` after npm clones the branch.
+
+Do not add a TypeScript runtime or loader to Homebridge. Build before runtime instead.
+
 ## Polling And Writes
 
 Regular polling is intentionally conservative. The plugin enforces a minimum poll interval so HomeKit refreshes do not become aggressive Daikin cloud traffic.

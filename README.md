@@ -123,3 +123,19 @@ npm test
 Keep unit tests focused on the thin adapter behavior: mocked Open API responses in, Homebridge/HomeKit-facing values and Daikin write payloads out. Live cloud testing should stay manual and use `readonly` mode first.
 
 CI runs the same lint and test checks on pull requests and pushes.
+
+## Installing From A Branch
+
+The package is TypeScript source, but Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`. Git branch installs use the npm `prepare` script to build `dist` after npm clones the branch.
+
+For the standard Homebridge Raspberry Pi image, plugins live under `/var/lib/homebridge` and the bundled Node runtime lives under `/opt/homebridge`:
+
+```sh
+sudo -u homebridge /opt/homebridge/bin/node /opt/homebridge/lib/node_modules/npm/bin/npm-cli.js install \
+  --prefix /var/lib/homebridge \
+  github:osdouglas/homebridge-daikin-one-openapi#codex/create-pykinone-homebridge-plugin
+
+sudo hb-service restart
+```
+
+Start with `readonly: true` in the Homebridge config until discovery and state updates look correct.
