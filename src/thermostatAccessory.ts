@@ -43,14 +43,11 @@ export class DaikinThermostatAccessory {
 
     this.service
       .getCharacteristic(platform.Characteristic.TargetTemperature)
-      .setProps({
-        minValue: 10,
-        maxValue: 35,
-        minStep: 0.5,
-      })
+      .setProps(this.temperatureProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
-        return this.clamp(this.platform.client.getTargetTemperature(this.deviceId), 10, 35);
+        const props = this.temperatureProps();
+        return this.clamp(this.platform.client.getTargetTemperature(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
         await this.platform.client.setTargetTemperature(this.deviceId, Number(value));
@@ -58,14 +55,11 @@ export class DaikinThermostatAccessory {
 
     this.service
       .getCharacteristic(platform.Characteristic.HeatingThresholdTemperature)
-      .setProps({
-        minValue: 10,
-        maxValue: 30,
-        minStep: 0.5,
-      })
+      .setProps(this.heatingThresholdProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
-        return this.clamp(this.platform.client.getHeatingThreshold(this.deviceId), 10, 30);
+        const props = this.heatingThresholdProps();
+        return this.clamp(this.platform.client.getHeatingThreshold(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
         await this.platform.client.setThresholds(this.deviceId, Number(value), undefined);
@@ -73,14 +67,11 @@ export class DaikinThermostatAccessory {
 
     this.service
       .getCharacteristic(platform.Characteristic.CoolingThresholdTemperature)
-      .setProps({
-        minValue: 12,
-        maxValue: 35,
-        minStep: 0.5,
-      })
+      .setProps(this.coolingThresholdProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
-        return this.clamp(this.platform.client.getCoolingThreshold(this.deviceId), 12, 35);
+        const props = this.coolingThresholdProps();
+        return this.clamp(this.platform.client.getCoolingThreshold(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
         await this.platform.client.setThresholds(this.deviceId, undefined, Number(value));
@@ -100,7 +91,13 @@ export class DaikinThermostatAccessory {
 
   private updateValues(): void {
     const characteristic = this.platform.Characteristic;
+    const temperatureProps = this.temperatureProps();
+    const heatingProps = this.heatingThresholdProps();
+    const coolingProps = this.coolingThresholdProps();
 
+    this.service.getCharacteristic(characteristic.TargetTemperature).setProps(temperatureProps);
+    this.service.getCharacteristic(characteristic.HeatingThresholdTemperature).setProps(heatingProps);
+    this.service.getCharacteristic(characteristic.CoolingThresholdTemperature).setProps(coolingProps);
     this.service.updateCharacteristic(characteristic.CurrentHeatingCoolingState, this.getCurrentHeatingCoolingState());
     this.service.updateCharacteristic(characteristic.TargetHeatingCoolingState, this.getTargetHeatingCoolingState());
     this.service.updateCharacteristic(
@@ -109,15 +106,15 @@ export class DaikinThermostatAccessory {
     );
     this.service.updateCharacteristic(
       characteristic.TargetTemperature,
-      this.clamp(this.platform.client.getTargetTemperature(this.deviceId), 10, 35),
+      this.clamp(this.platform.client.getTargetTemperature(this.deviceId), temperatureProps.minValue, temperatureProps.maxValue),
     );
     this.service.updateCharacteristic(
       characteristic.HeatingThresholdTemperature,
-      this.clamp(this.platform.client.getHeatingThreshold(this.deviceId), 10, 30),
+      this.clamp(this.platform.client.getHeatingThreshold(this.deviceId), heatingProps.minValue, heatingProps.maxValue),
     );
     this.service.updateCharacteristic(
       characteristic.CoolingThresholdTemperature,
-      this.clamp(this.platform.client.getCoolingThreshold(this.deviceId), 12, 35),
+      this.clamp(this.platform.client.getCoolingThreshold(this.deviceId), coolingProps.minValue, coolingProps.maxValue),
     );
     this.service.updateCharacteristic(
       characteristic.CurrentRelativeHumidity,
@@ -178,5 +175,37 @@ export class DaikinThermostatAccessory {
       return min;
     }
     return Math.min(max, Math.max(min, value));
+  }
+
+  private temperatureProps(): { minValue: number; maxValue: number; minStep: number } {
+    return {
+      minValue: this.platform.client.getSetpointMinimum(this.deviceId),
+      maxValue: this.platform.client.getSetpointMaximum(this.deviceId),
+      minStep: 0.5,
+    };
+  }
+
+  private heatingThresholdProps(): { minValue: number; maxValue: number; minStep: number } {
+    const minimum = this.platform.client.getSetpointMinimum(this.deviceId);
+    const maximum = this.platform.client.getSetpointMaximum(this.deviceId);
+    const delta = this.platform.client.getSetpointDelta(this.deviceId);
+
+    return {
+      minValue: minimum,
+      maxValue: Math.max(minimum, maximum - delta),
+      minStep: 0.5,
+    };
+  }
+
+  private coolingThresholdProps(): { minValue: number; maxValue: number; minStep: number } {
+    const minimum = this.platform.client.getSetpointMinimum(this.deviceId);
+    const maximum = this.platform.client.getSetpointMaximum(this.deviceId);
+    const delta = this.platform.client.getSetpointDelta(this.deviceId);
+
+    return {
+      minValue: Math.min(maximum, minimum + delta),
+      maxValue: maximum,
+      minStep: 0.5,
+    };
   }
 }

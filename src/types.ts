@@ -20,6 +20,7 @@ export interface DaikinPlatformConfig {
   integratorEmail: string;
   integratorToken: string;
   pollIntervalSeconds: number;
+  requestTimeoutSeconds: number;
   includeDeviceName: boolean;
   deviceIds: string[];
   readonly: boolean;
@@ -62,9 +63,7 @@ export interface DaikinThermostatData {
   geofencingEnabled?: boolean;
 }
 
-export type DaikinThermostatUpdate = Partial<
-  Pick<DaikinThermostatData, 'mode' | 'heatSetpoint' | 'coolSetpoint'>
->;
+export type DaikinThermostatUpdate = Pick<DaikinThermostatData, 'mode' | 'heatSetpoint' | 'coolSetpoint'>;
 
 export interface AccessoryContext {
   device: DaikinDevice;

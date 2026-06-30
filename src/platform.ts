@@ -102,6 +102,7 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
       integratorEmail: String(config.integratorEmail),
       integratorToken: String(config.integratorToken),
       pollIntervalSeconds: typeof config.pollIntervalSeconds === 'number' ? Math.max(180, config.pollIntervalSeconds) : 180,
+      requestTimeoutSeconds: typeof config.requestTimeoutSeconds === 'number' ? Math.max(1, config.requestTimeoutSeconds) : 20,
       includeDeviceName: config.includeDeviceName !== false,
       deviceIds: Array.isArray(config.deviceIds) ? config.deviceIds.filter((id): id is string => typeof id === 'string') : [],
       readonly: Boolean(config.readonly),
