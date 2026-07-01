@@ -46,7 +46,7 @@ export class DaikinCirculationFanAccessory {
 
     this.service
       .getCharacteristic(platform.Characteristic.RotationSpeed)
-      .setProps({ minValue: 0, maxValue: 100, minStep: 50 })
+      .setProps({ minValue: 0, maxValue: 100, minStep: 1 })
       .onGet(() => {
         this.platform.client.requestRefreshNow();
         return this.getRotationSpeed();
@@ -74,7 +74,7 @@ export class DaikinCirculationFanAccessory {
   private async setActive(value: CharacteristicValue): Promise<void> {
     const active = Number(value) === this.platform.Characteristic.Active.ACTIVE;
     await this.platform.client.setFanCirculation(this.deviceId, {
-      fanCirculate: active ? this.activeCirculationMode() : FanCirculateMode.OFF,
+      fanCirculate: active ? this.activeCirculationMode({ preferManual: true }) : FanCirculateMode.OFF,
       fanCirculateSpeed: this.currentSpeed(),
     });
   }
@@ -107,6 +107,9 @@ export class DaikinCirculationFanAccessory {
   }
 
   private getRotationSpeed(): CharacteristicValue {
+    if (!this.isCirculationEnabled()) {
+      return 0;
+    }
     return this.speedToRotationSpeed(this.platform.client.getFanCirculateSpeed(this.deviceId));
   }
 
@@ -147,9 +150,9 @@ export class DaikinCirculationFanAccessory {
   private speedToRotationSpeed(speed: FanCirculateSpeed | undefined): number {
     switch (speed) {
       case FanCirculateSpeed.LOW:
-        return 0;
+        return 33;
       case FanCirculateSpeed.MEDIUM:
-        return 50;
+        return 66;
       case FanCirculateSpeed.HIGH:
         return 100;
       default:
