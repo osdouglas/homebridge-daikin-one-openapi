@@ -38,8 +38,7 @@ export function parsePlatformConfig(config: PlatformConfig): ConfigParseResult {
       includeDeviceName: config.includeDeviceName !== false,
       deviceIds: Array.isArray(config.deviceIds) ? config.deviceIds.filter((id): id is string => typeof id === 'string') : [],
       readonly: Boolean(config.readonly),
-      debug: Boolean(config.debug),
-      logRaw: Boolean(config.logRaw),
+      developerMode: Boolean(config.developerMode),
     },
   };
 }

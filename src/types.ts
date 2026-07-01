@@ -43,8 +43,7 @@ export interface DaikinPlatformConfig {
   includeDeviceName: boolean;
   deviceIds: string[];
   readonly: boolean;
-  debug: boolean;
-  logRaw: boolean;
+  developerMode: boolean;
 }
 
 export interface DaikinLocation {

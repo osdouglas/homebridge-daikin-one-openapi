@@ -2,7 +2,7 @@ import { hrtime } from 'node:process';
 
 import type { Logging } from 'homebridge';
 
-import { normalizeMode, normalizeThermostatData } from './daikinOpenApiMapper.js';
+import { normalizeMode, normalizeThermostatData, validateThermostatPayload } from './daikinOpenApiMapper.js';
 import { FetchJsonHttpClient, type JsonHttpClient } from './httpClient.js';
 import { applySetpointPolicy } from './setpointPolicy.js';
 import { EquipmentStatus, FanCirculateMode, FanCirculateSpeed, ModeLimit, ThermostatMode } from './types.js';
@@ -40,6 +40,8 @@ export class DaikinOpenApiClient {
   private initialized = false;
   private readonly pollIntervalMs: number;
   private noPollBeforeMs = 0;
+  private readonly lastPayloadWarningKeys = new Map<string, string>();
+  private readonly lastDeveloperNoteKeys = new Map<string, string>();
 
   public constructor(
     private readonly config: DaikinPlatformConfig,
@@ -315,9 +317,10 @@ export class DaikinOpenApiClient {
     for (const device of this.devices.values()) {
       try {
         const data = await this.authorizedGet<Record<string, unknown>>(`${DEVICES_URL}/${device.id}`);
-        if (this.config.logRaw) {
+        if (this.config.developerMode) {
           this.log.info('Raw Daikin payload for %s: %s', device.id, JSON.stringify(data));
         }
+        this.logPayloadValidation(device.id, validateThermostatPayload(data));
         this.updateDeviceData(device.id, normalizeThermostatData(data));
         this.notify(device.id);
       } catch (error) {
@@ -357,7 +360,7 @@ export class DaikinOpenApiClient {
 
     try {
       await this.ensureToken();
-      if (this.config.logRaw) {
+      if (this.config.developerMode) {
         this.log.info('%s for %s: %s', payloadLabel, deviceId, JSON.stringify(update));
       }
       await this.fetchJson<unknown>(`${DEVICES_URL}/${deviceId}/${endpoint}`, {
@@ -486,8 +489,43 @@ export class DaikinOpenApiClient {
   }
 
   private debug(message: string, ...parameters: unknown[]): void {
-    if (this.config.debug) {
+    if (this.config.developerMode) {
       this.log.info(message, ...parameters);
+    }
+  }
+
+  private logPayloadValidation(
+    deviceId: string,
+    validation: ReturnType<typeof validateThermostatPayload>,
+  ): void {
+    this.logChangedPayloadWarnings(deviceId, validation.warnings);
+
+    if (this.config.developerMode) {
+      this.logChangedDeveloperNotes(deviceId, validation.developerNotes);
+    }
+  }
+
+  private logChangedPayloadWarnings(deviceId: string, warnings: string[]): void {
+    const warningKey = warnings.join('; ');
+    if (this.lastPayloadWarningKeys.get(deviceId) === warningKey) {
+      return;
+    }
+
+    this.lastPayloadWarningKeys.set(deviceId, warningKey);
+    if (warnings.length > 0) {
+      this.log.warn('Daikin payload validation warning for %s: %s.', deviceId, warningKey);
+    }
+  }
+
+  private logChangedDeveloperNotes(deviceId: string, developerNotes: string[]): void {
+    const noteKey = developerNotes.join('; ');
+    if (this.lastDeveloperNoteKeys.get(deviceId) === noteKey) {
+      return;
+    }
+
+    this.lastDeveloperNoteKeys.set(deviceId, noteKey);
+    if (developerNotes.length > 0) {
+      this.log.info('Daikin payload developer note for %s: %s.', deviceId, noteKey);
     }
   }
 

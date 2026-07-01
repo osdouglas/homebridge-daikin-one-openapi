@@ -39,12 +39,11 @@ Configure Daikon Plus on the Homebridge host that will run it. Start read-only w
   "integratorEmail": "email-used-in-the-daikin-one-app@example.com",
   "integratorToken": "your-integrator-token",
   "readonly": true,
-  "debug": true,
-  "logRaw": true
+  "developerMode": true
 }
 ```
 
-Once discovery and state look right, set `logRaw` back to `false`, then set `readonly` to `false` for write testing.
+Once discovery and state look right, set `developerMode` back to `false`, then set `readonly` to `false` for write testing.
 
 Optional settings:
 
@@ -52,8 +51,7 @@ Optional settings:
 - `requestTimeoutSeconds`: defaults to `20`.
 - `includeDeviceName`: defaults to `true`.
 - `deviceIds`: expose only selected thermostats/zones after discovery.
-- `debug`: extra startup/runtime logging.
-- `logRaw`: temporary raw Open API payload logging.
+- `developerMode`: temporary verbose troubleshooting logs, including raw Open API payloads.
 
 ## Runtime Behavior
 
@@ -71,6 +69,26 @@ Optional settings:
 - HomeKit target modes are limited from Daikin's `modeLimit` before writes are sent to the Open API.
 - Emergency heat is displayed as HomeKit heat but is not exposed as a separate HomeKit control.
 
-Set `logRaw` only temporarily. It may log device IDs and detailed HVAC state, and is mainly useful when checking how a zoned system appears in the Open API.
+Set `developerMode` only temporarily. It logs raw API payloads, device IDs, and detailed HVAC state, and is mainly useful when checking how a zoned system appears in the Open API.
 
 The Circulation Fan accessory controls Daikin's fan circulation setting, not the required HVAC blower during active heating or cooling. If Daikin reports fan-state changes after a thermostat write, HomeKit reflects them after the normal cloud refresh.
+
+## Troubleshooting
+
+### Discovery works, but HomeKit shows missing or conservative values
+
+Daikon Plus validates every live thermostat payload before normalizing it for HomeKit. If Daikin omits a required thermostat field, reports a value in an unexpected type, or sends an enum value this plugin does not understand yet, the plugin logs a deduplicated `Daikin payload validation warning` and then uses the same safe fallback path as normal parsing. Unknown additive fields are not warnings; they are logged as developer notes only when `developerMode` is enabled.
+
+This keeps Homebridge running while making Open API drift visible. When reporting an issue, include:
+
+- the validation warning line,
+- whether `readonly` is enabled,
+- whether this is a zoned system,
+- the plugin version,
+- and, if you are comfortable sharing it privately with sensitive IDs redacted, a temporary `developerMode` payload.
+
+Turn `developerMode` off again after troubleshooting because it can include detailed HVAC state and device identifiers.
+
+### Optional accessories disappear from Daikin but remain in HomeKit
+
+Outdoor Unit, Circulation Fan, and Schedule surfaces are intentionally sticky once discovered. This avoids room and scene churn in HomeKit when the Open API temporarily omits optional fields. Writes for optional surfaces still fail closed when the current payload does not include the corresponding Daikin field.

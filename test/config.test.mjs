@@ -36,7 +36,6 @@ test('parses Homebridge config with defaults and filtered device IDs', () => {
     includeDeviceName: false,
     deviceIds: ['zone-1', 'zone-2'],
     readonly: true,
-    debug: false,
-    logRaw: false,
+    developerMode: false,
   });
 });

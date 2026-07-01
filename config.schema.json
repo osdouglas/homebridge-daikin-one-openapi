@@ -66,15 +66,11 @@
         "type": "boolean",
         "default": false
       },
-      "debug": {
-        "title": "Debug Logging",
+      "developerMode": {
+        "title": "Developer Mode",
         "type": "boolean",
-        "default": false
-      },
-      "logRaw": {
-        "title": "Log Raw API Payloads",
-        "type": "boolean",
-        "default": false
+        "default": false,
+        "description": "Enable verbose troubleshooting logs, including raw Daikin API payloads. Turn off after troubleshooting because payloads can include device identifiers and detailed HVAC state."
       }
     }
   },
@@ -88,7 +84,6 @@
     "includeDeviceName",
     "deviceIds",
     "readonly",
-    "debug",
-    "logRaw"
+    "developerMode"
   ]
 }

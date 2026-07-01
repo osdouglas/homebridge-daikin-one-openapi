@@ -322,6 +322,95 @@ test('preserves emergency heat mode when writing setpoints', async () => {
   assert.equal(client.getTargetTemperature('zone-1'), 21);
 });
 
+test('logs payload validation warnings while keeping safe normalized state', async () => {
+  const warnings = [];
+  const { installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 255,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log({ warnings }));
+
+  await client.initialize();
+
+  assert.equal(client.getMode('zone-1'), 0);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /unsupported mode 255/);
+});
+
+test('keeps unknown payload fields out of default warnings', async () => {
+  const infos = [];
+  const warnings = [];
+  const { installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+      vendorAddedField: true,
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log({ infos, warnings }));
+
+  await client.initialize();
+
+  assert.deepEqual(warnings, []);
+  assert.equal(infos.some(message => message.includes('Daikin payload developer note')), false);
+});
+
+test('logs unknown payload fields as developer notes only in developer mode', async () => {
+  const infos = [];
+  const warnings = [];
+  const { installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+      vendorAddedField: true,
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config({ developerMode: true }), log({ infos, warnings }));
+
+  await client.initialize();
+
+  assert.deepEqual(warnings, []);
+  assert.equal(infos.some(message => message.includes('Daikin payload developer note')), true);
+});
+
 test('refreshes expired access tokens before writes', async () => {
   const { calls, installFetch } = fetchQueue([
     jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
@@ -371,18 +460,21 @@ function config(overrides = {}) {
     includeDeviceName: true,
     deviceIds: [],
     readonly: false,
-    debug: false,
-    logRaw: false,
+    developerMode: false,
     ...overrides,
   };
 }
 
-function log() {
+function log({ infos = [], warnings = [] } = {}) {
   return {
     debug() {},
     error() {},
-    info() {},
-    warn() {},
+    info(message, ...parameters) {
+      infos.push([message, ...parameters].join(' '));
+    },
+    warn(message, ...parameters) {
+      warnings.push([message, ...parameters].join(' '));
+    },
   };
 }
 

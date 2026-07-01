@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { normalizeThermostatData } from '../dist/daikinOpenApiMapper.js';
+import { normalizeThermostatData, validateThermostatPayload } from '../dist/daikinOpenApiMapper.js';
 import { applySetpointPolicy } from '../dist/setpointPolicy.js';
 
 test('normalizes numeric Open API strings into thermostat data', () => {
@@ -107,4 +107,59 @@ test('keeps auto heat and cool setpoints separated by the Daikin delta', () => {
       coolSetpoint: 20.5,
     },
   );
+});
+
+test('validates live Open API payload drift before normalization falls back', () => {
+  assert.deepEqual(validateThermostatPayload({
+    equipmentStatus: 'fan',
+    mode: 255,
+    modeLimit: 99,
+    heatSetpoint: 20,
+    coolSetpoint: 24,
+    fanCirculate: 99,
+    tempOutdoor: 10,
+    vendorAddedField: true,
+  }), {
+    warnings: [
+      'missing required field tempIndoor',
+      'invalid numeric field equipmentStatus',
+      'unsupported mode 255',
+      'unsupported modeLimit 99',
+      'unsupported fanCirculate 99',
+    ],
+    developerNotes: ['unexpected field vendorAddedField'],
+  });
+});
+
+test('warns for blank required numeric strings before normalization falls back', () => {
+  assert.deepEqual(validateThermostatPayload({
+    equipmentStatus: ' ',
+    mode: '\t',
+    heatSetpoint: '  ',
+    coolSetpoint: '\n',
+    tempIndoor: '\r\n',
+  }), {
+    warnings: [
+      'missing required field equipmentStatus',
+      'missing required field mode',
+      'missing required field heatSetpoint',
+      'missing required field coolSetpoint',
+      'missing required field tempIndoor',
+    ],
+    developerNotes: [],
+  });
+
+  const data = normalizeThermostatData({
+    equipmentStatus: ' ',
+    mode: ' ',
+    heatSetpoint: ' ',
+    coolSetpoint: ' ',
+    tempIndoor: ' ',
+  });
+
+  assert.equal(data.equipmentStatus, 5);
+  assert.equal(data.mode, 0);
+  assert.equal(data.heatSetpoint, 20);
+  assert.equal(data.coolSetpoint, 24);
+  assert.equal(data.tempIndoor, -270);
 });
