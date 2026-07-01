@@ -130,3 +130,36 @@ test('validates live Open API payload drift before normalization falls back', ()
     developerNotes: ['unexpected field vendorAddedField'],
   });
 });
+
+test('warns for blank required numeric strings before normalization falls back', () => {
+  assert.deepEqual(validateThermostatPayload({
+    equipmentStatus: ' ',
+    mode: '\t',
+    heatSetpoint: '  ',
+    coolSetpoint: '\n',
+    tempIndoor: '\r\n',
+  }), {
+    warnings: [
+      'missing required field equipmentStatus',
+      'missing required field mode',
+      'missing required field heatSetpoint',
+      'missing required field coolSetpoint',
+      'missing required field tempIndoor',
+    ],
+    developerNotes: [],
+  });
+
+  const data = normalizeThermostatData({
+    equipmentStatus: ' ',
+    mode: ' ',
+    heatSetpoint: ' ',
+    coolSetpoint: ' ',
+    tempIndoor: ' ',
+  });
+
+  assert.equal(data.equipmentStatus, 5);
+  assert.equal(data.mode, 0);
+  assert.equal(data.heatSetpoint, 20);
+  assert.equal(data.coolSetpoint, 24);
+  assert.equal(data.tempIndoor, -270);
+});

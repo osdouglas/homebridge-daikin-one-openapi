@@ -69,7 +69,7 @@ export function validateThermostatPayload(payload: Record<string, unknown>): The
 
 function missingRequiredFieldIssues(payload: Record<string, unknown>): string[] {
   return ['equipmentStatus', 'mode', 'heatSetpoint', 'coolSetpoint', 'tempIndoor']
-    .filter(field => payload[field] === undefined || payload[field] === null || payload[field] === '')
+    .filter(field => payload[field] === undefined || payload[field] === null || isBlankString(payload[field]))
     .map(field => `missing required field ${field}`);
 }
 
@@ -78,7 +78,7 @@ function invalidRequiredNumberIssues(payload: Record<string, unknown>): string[]
     .filter(field =>
       payload[field] !== undefined &&
       payload[field] !== null &&
-      payload[field] !== '' &&
+      !isBlankString(payload[field]) &&
       !Number.isFinite(numberFrom(payload[field], Number.NaN)),
     )
     .map(field => `invalid numeric field ${field}`);
@@ -223,12 +223,20 @@ function optionalNumber(value: unknown): number | undefined {
   return Number.isFinite(numberValue) ? numberValue : undefined;
 }
 
+function isBlankString(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length === 0;
+}
+
 function numberFrom(value: unknown, fallback: number): number {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : fallback;
   }
   if (typeof value === 'string') {
-    const parsed = Number(value);
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return fallback;
+    }
+    const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
