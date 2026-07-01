@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { normalizeThermostatData, validateThermostatPayload } from '../dist/daikinOpenApiMapper.js';
+import { normalizeThermostatData, parseThermostatPayload, validateThermostatPayload } from '../dist/daikinOpenApiMapper.js';
 import { applySetpointPolicy } from '../dist/setpointPolicy.js';
 
 test('normalizes numeric Open API strings into thermostat data', () => {
@@ -129,6 +129,34 @@ test('validates live Open API payload drift before normalization falls back', ()
     ],
     developerNotes: ['unexpected field vendorAddedField'],
   });
+});
+
+test('parses validation warnings and normalized thermostat data together', () => {
+  const parsed = parseThermostatPayload({
+    equipmentStatus: 'fan',
+    mode: 255,
+    modeLimit: 99,
+    heatSetpoint: 20,
+    coolSetpoint: 24,
+    fanCirculate: 99,
+    tempOutdoor: 10,
+    vendorAddedField: true,
+  });
+
+  assert.deepEqual(parsed.warnings, [
+    'missing required field tempIndoor',
+    'invalid numeric field equipmentStatus',
+    'unsupported mode 255',
+    'unsupported modeLimit 99',
+    'unsupported fanCirculate 99',
+  ]);
+  assert.deepEqual(parsed.developerNotes, ['unexpected field vendorAddedField']);
+  assert.equal(parsed.data.equipmentStatus, 5);
+  assert.equal(parsed.data.mode, 0);
+  assert.equal(parsed.data.modeLimit, 99);
+  assert.equal(parsed.data.fanCirculate, undefined);
+  assert.equal(parsed.data.tempIndoor, -270);
+  assert.equal(parsed.data.tempOutdoor, 10);
 });
 
 test('warns for blank required numeric strings before normalization falls back', () => {
