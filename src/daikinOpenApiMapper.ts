@@ -1,14 +1,21 @@
-import { EquipmentStatus, ThermostatMode, type DaikinThermostatData } from './types.js';
+import {
+  EquipmentStatus,
+  FanCirculateMode,
+  FanCirculateSpeed,
+  ModeLimit,
+  ThermostatMode,
+  type DaikinThermostatData,
+} from './types.js';
 
 export function normalizeThermostatData(payload: Record<string, unknown>): DaikinThermostatData {
   return {
     equipmentStatus: numberFrom(payload.equipmentStatus, EquipmentStatus.IDLE) as EquipmentStatus,
     mode: normalizeMode(payload.mode),
-    modeLimit: optionalNumber(payload.modeLimit),
+    modeLimit: normalizeModeLimit(payload.modeLimit),
     modeEmHeatAvailable: optionalBooleanOrNumber(payload.modeEmHeatAvailable),
     fan: optionalNumber(payload.fan),
-    fanCirculate: optionalNumber(payload.fanCirculate),
-    fanCirculateSpeed: optionalNumber(payload.fanCirculateSpeed),
+    fanCirculate: normalizeFanCirculateMode(payload.fanCirculate),
+    fanCirculateSpeed: normalizeFanCirculateSpeed(payload.fanCirculateSpeed),
     heatSetpoint: numberFrom(payload.heatSetpoint, 20),
     coolSetpoint: numberFrom(payload.coolSetpoint, 24),
     setpointDelta: optionalNumber(payload.setpointDelta),
@@ -23,6 +30,19 @@ export function normalizeThermostatData(payload: Record<string, unknown>): Daiki
   };
 }
 
+export function normalizeModeLimit(value: unknown): ModeLimit | undefined {
+  const modeLimit = optionalNumber(value);
+  switch (modeLimit) {
+    case ModeLimit.NONE:
+    case ModeLimit.ALL:
+    case ModeLimit.HEAT_ONLY:
+    case ModeLimit.COOL_ONLY:
+      return modeLimit;
+    default:
+      return modeLimit as ModeLimit | undefined;
+  }
+}
+
 export function normalizeMode(value: unknown): ThermostatMode {
   const mode = numberFrom(value, ThermostatMode.OFF);
   switch (mode) {
@@ -33,6 +53,30 @@ export function normalizeMode(value: unknown): ThermostatMode {
       return mode;
     default:
       return ThermostatMode.OFF;
+  }
+}
+
+function normalizeFanCirculateMode(value: unknown): FanCirculateMode | undefined {
+  const mode = optionalNumber(value);
+  switch (mode) {
+    case FanCirculateMode.OFF:
+    case FanCirculateMode.ON:
+    case FanCirculateMode.SCHEDULE:
+      return mode;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeFanCirculateSpeed(value: unknown): FanCirculateSpeed | undefined {
+  const speed = optionalNumber(value);
+  switch (speed) {
+    case FanCirculateSpeed.LOW:
+    case FanCirculateSpeed.MEDIUM:
+    case FanCirculateSpeed.HIGH:
+      return speed;
+    default:
+      return undefined;
   }
 }
 

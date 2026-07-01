@@ -8,6 +8,8 @@ The code should only need to change when one of those contracts changes: Homebri
 
 - `platform.ts` owns Homebridge platform lifecycle, discovery, accessory registration, and cache cleanup.
 - `thermostatAccessory.ts` owns HomeKit thermostat services and characteristics.
+- `outdoorUnitAccessory.ts` owns HomeKit outdoor temperature and humidity sensor services.
+- `circulationFanAccessory.ts` owns HomeKit circulation fan services and characteristics.
 - `daikinOpenApiClient.ts` owns Daikin authentication, device discovery, polling, writes, local cache updates, and listener notification.
 - `daikinOpenApiMapper.ts` owns conversion from raw Open API payloads to thermostat data.
 - `setpointPolicy.ts` owns setpoint clamping and auto-mode heat/cool separation.
@@ -46,10 +48,19 @@ Regular polling is intentionally conservative. The plugin enforces a minimum pol
 Writes are faster than regular polling:
 
 1. HomeKit sends a mode or setpoint change.
-2. The plugin sends `PUT /v1/devices/{deviceId}/msp`.
-3. A successful HTTP response is treated as the write acknowledgment.
-4. The local HomeKit-facing cache is updated immediately from the accepted write payload.
-5. A short confirmatory cloud refresh reconciles the local cache with Daikin's actual state.
+2. The plugin validates the mode against Daikin's reported mode limits.
+3. The plugin sends `PUT /v1/devices/{deviceId}/msp`.
+4. A successful HTTP response is treated as the write acknowledgment.
+5. The local HomeKit-facing cache is updated immediately from the accepted write payload.
+6. A short confirmatory cloud refresh reconciles the local cache with Daikin's actual state.
+
+Schedule and circulation fan controls are separate Daikin write paths:
+
+- Schedule writes use `PUT /v1/devices/{deviceId}/schedule`.
+- Circulation fan writes use `PUT /v1/devices/{deviceId}/fan`.
+- Thermostat mode and setpoint changes must not send fan or schedule payloads.
+
+Emergency heat is deliberately conservative. If Daikin reports emergency heat as the current mode, HomeKit displays heat and setpoint writes preserve the Daikin mode value. HomeKit does not expose a separate emergency heat control.
 
 If the Open API later exposes a stronger write response, event stream, webhook, or push mechanism, use that instead of increasing background polling.
 
@@ -77,6 +88,10 @@ Live cloud tests should remain manual. Use a separate Homebridge instance or chi
 Dual-zone support depends on how the Daikin Open API represents the system.
 
 If each zone appears as a separate device, each zone becomes a HomeKit thermostat. If zones are nested inside a parent thermostat payload, support should be added against the real logged payload shape without changing the broader architecture.
+
+The public Open API does not expose physical outdoor-unit identity. When outdoor readings are present, each thermostat device gets its own Outdoor Unit accessory rather than trying to infer shared topology.
+
+The Circulation Fan accessory controls Daikin's circulation setting. It should not be presented as a guarantee that HomeKit can stop the blower required for active heating or cooling.
 
 ## Non-Goals
 

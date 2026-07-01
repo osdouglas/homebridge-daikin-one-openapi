@@ -5,11 +5,13 @@ import type { Logging } from 'homebridge';
 import { normalizeMode, normalizeThermostatData } from './daikinOpenApiMapper.js';
 import { FetchJsonHttpClient, type JsonHttpClient } from './httpClient.js';
 import { applySetpointPolicy } from './setpointPolicy.js';
-import { EquipmentStatus, ThermostatMode } from './types.js';
+import { EquipmentStatus, FanCirculateMode, FanCirculateSpeed, ModeLimit, ThermostatMode } from './types.js';
 import type {
+  DaikinFanUpdate,
   DaikinDevice,
   DaikinLocation,
   DaikinPlatformConfig,
+  DaikinScheduleUpdate,
   DaikinThermostatData,
   DaikinThermostatUpdate,
 } from './types.js';
@@ -20,11 +22,14 @@ interface DaikinTokenResponse {
 }
 
 type DataChanged = () => void;
+type DaikinWriteEndpoint = 'msp' | 'schedule' | 'fan';
+type DaikinWriteUpdate = DaikinFanUpdate | DaikinScheduleUpdate | DaikinThermostatUpdate;
 
 const DAIKIN_ONE_BASE_URI = 'https://integrator-api.daikinskyport.com';
 const TOKEN_URL = `${DAIKIN_ONE_BASE_URI}/v1/token`;
 const DEVICES_URL = `${DAIKIN_ONE_BASE_URI}/v1/devices`;
 const WRITE_DELAY_MS = 15_000;
+const UNKNOWN_TEMPERATURE = -270;
 
 export class DaikinOpenApiClient {
   private token?: DaikinTokenResponse;
@@ -91,23 +96,23 @@ export class DaikinOpenApiClient {
   }
 
   public getCurrentTemperature(deviceId: string): number {
-    return this.devices.get(deviceId)?.data?.tempIndoor ?? -270;
+    return this.devices.get(deviceId)?.data?.tempIndoor ?? UNKNOWN_TEMPERATURE;
   }
 
   public getTargetTemperature(deviceId: string): number {
     const data = this.devices.get(deviceId)?.data;
     if (!data) {
-      return -270;
+      return UNKNOWN_TEMPERATURE;
     }
     return data.mode === ThermostatMode.COOL ? data.coolSetpoint : data.heatSetpoint;
   }
 
   public getHeatingThreshold(deviceId: string): number {
-    return this.devices.get(deviceId)?.data?.heatSetpoint ?? -270;
+    return this.devices.get(deviceId)?.data?.heatSetpoint ?? UNKNOWN_TEMPERATURE;
   }
 
   public getCoolingThreshold(deviceId: string): number {
-    return this.devices.get(deviceId)?.data?.coolSetpoint ?? -270;
+    return this.devices.get(deviceId)?.data?.coolSetpoint ?? UNKNOWN_TEMPERATURE;
   }
 
   public getSetpointMinimum(deviceId: string): number {
@@ -126,6 +131,55 @@ export class DaikinOpenApiClient {
     return this.devices.get(deviceId)?.data?.humIndoor ?? 0;
   }
 
+  public hasOutdoorData(deviceId: string): boolean {
+    const data = this.devices.get(deviceId)?.data;
+    return typeof data?.tempOutdoor === 'number' || typeof data?.humOutdoor === 'number';
+  }
+
+  public getOutdoorTemperature(deviceId: string): number {
+    return this.devices.get(deviceId)?.data?.tempOutdoor ?? UNKNOWN_TEMPERATURE;
+  }
+
+  public getOutdoorHumidity(deviceId: string): number {
+    return this.devices.get(deviceId)?.data?.humOutdoor ?? 0;
+  }
+
+  public hasScheduleData(deviceId: string): boolean {
+    return typeof this.devices.get(deviceId)?.data?.scheduleEnabled === 'boolean';
+  }
+
+  public getScheduleEnabled(deviceId: string): boolean {
+    return this.devices.get(deviceId)?.data?.scheduleEnabled ?? false;
+  }
+
+  public hasFanCirculationData(deviceId: string): boolean {
+    return typeof this.devices.get(deviceId)?.data?.fanCirculate === 'number';
+  }
+
+  public getFanCirculate(deviceId: string): FanCirculateMode {
+    return this.devices.get(deviceId)?.data?.fanCirculate ?? FanCirculateMode.OFF;
+  }
+
+  public getFanCirculateSpeed(deviceId: string): FanCirculateSpeed {
+    return this.devices.get(deviceId)?.data?.fanCirculateSpeed ?? FanCirculateSpeed.MEDIUM;
+  }
+
+  public getSupportedModes(deviceId: string): ThermostatMode[] {
+    const data = this.devices.get(deviceId)?.data;
+    switch (data?.modeLimit) {
+      case ModeLimit.NONE:
+      case ModeLimit.ALL:
+      case undefined:
+        return [ThermostatMode.OFF, ThermostatMode.HEAT, ThermostatMode.COOL, ThermostatMode.AUTO];
+      case ModeLimit.HEAT_ONLY:
+        return [ThermostatMode.OFF, ThermostatMode.HEAT];
+      case ModeLimit.COOL_ONLY:
+        return [ThermostatMode.OFF, ThermostatMode.COOL];
+      default:
+        return this.fallbackSupportedModes(data);
+    }
+  }
+
   public async setMode(deviceId: string, mode: number): Promise<boolean> {
     const data = this.devices.get(deviceId)?.data;
     if (!data) {
@@ -133,8 +187,22 @@ export class DaikinOpenApiClient {
       return false;
     }
 
+    const normalizedMode = this.normalizeMode(mode);
+    const requestedMode = normalizedMode === ThermostatMode.HEAT && data.mode === ThermostatMode.EMERGENCY_HEAT
+      ? ThermostatMode.EMERGENCY_HEAT
+      : normalizedMode;
+
+    if (!this.canWriteMode(deviceId, requestedMode)) {
+      this.log.warn('Skipping unsupported Daikin mode %d for %s.', requestedMode, deviceId);
+      return false;
+    }
+
+    if (requestedMode === data.mode) {
+      return true;
+    }
+
     return this.putMsp(deviceId, applySetpointPolicy(data, {
-      mode: this.normalizeMode(mode),
+      mode: requestedMode,
       heatSetpoint: data.heatSetpoint,
       coolSetpoint: data.coolSetpoint,
     }));
@@ -172,6 +240,20 @@ export class DaikinOpenApiClient {
       heatSetpoint: heatSetpoint ?? data.heatSetpoint,
       coolSetpoint: coolSetpoint ?? data.coolSetpoint,
     }));
+  }
+
+  public async setScheduleEnabled(deviceId: string, scheduleEnabled: boolean): Promise<boolean> {
+    return this.putSchedule(deviceId, { scheduleEnabled });
+  }
+
+  public async setFanCirculation(
+    deviceId: string,
+    update: DaikinFanUpdate,
+  ): Promise<boolean> {
+    return this.putFan(deviceId, {
+      fanCirculate: update.fanCirculate,
+      fanCirculateSpeed: update.fanCirculateSpeed ?? this.getFanCirculateSpeed(deviceId),
+    });
   }
 
   private async authenticate(): Promise<void> {
@@ -229,17 +311,40 @@ export class DaikinOpenApiClient {
   }
 
   private async putMsp(deviceId: string, update: DaikinThermostatUpdate): Promise<boolean> {
+    if (!this.canWriteMode(deviceId, update.mode)) {
+      this.log.warn('Skipping unsupported Daikin mode %d for %s.', update.mode, deviceId);
+      return false;
+    }
+
+    return this.putDeviceUpdate(deviceId, 'msp', update, 'Daikin write payload', 'Daikin device write');
+  }
+
+  private async putSchedule(deviceId: string, update: DaikinScheduleUpdate): Promise<boolean> {
+    return this.putDeviceUpdate(deviceId, 'schedule', update, 'Daikin schedule payload', 'Daikin schedule write');
+  }
+
+  private async putFan(deviceId: string, update: DaikinFanUpdate): Promise<boolean> {
+    return this.putDeviceUpdate(deviceId, 'fan', update, 'Daikin fan payload', 'Daikin fan write');
+  }
+
+  private async putDeviceUpdate(
+    deviceId: string,
+    endpoint: DaikinWriteEndpoint,
+    update: DaikinWriteUpdate,
+    payloadLabel: string,
+    writeLabel: string,
+  ): Promise<boolean> {
     if (this.config.readonly) {
-      this.log.warn('Read-only mode is enabled. Skipping Daikin write for %s.', deviceId);
+      this.log.warn('Read-only mode is enabled. Skipping %s for %s.', writeLabel, deviceId);
       return false;
     }
 
     try {
       await this.ensureToken();
       if (this.config.logRaw) {
-        this.log.info('Daikin write payload for %s: %s', deviceId, JSON.stringify(update));
+        this.log.info('%s for %s: %s', payloadLabel, deviceId, JSON.stringify(update));
       }
-      await this.fetchJson<unknown>(`${DEVICES_URL}/${deviceId}/msp`, {
+      await this.fetchJson<unknown>(`${DEVICES_URL}/${deviceId}/${endpoint}`, {
         method: 'PUT',
         headers: this.authorizedHeaders(),
         body: JSON.stringify(update),
@@ -251,12 +356,15 @@ export class DaikinOpenApiClient {
       this.scheduleRefresh(WRITE_DELAY_MS);
       return true;
     } catch (error) {
-      this.logError(`Unable to write Daikin device ${deviceId}.`, error);
+      this.logError(`Unable to complete ${writeLabel} for ${deviceId}.`, error);
       return false;
     }
   }
 
-  private updateDeviceData(deviceId: string, update: DaikinThermostatUpdate | Partial<DaikinThermostatData>): void {
+  private updateDeviceData(
+    deviceId: string,
+    update: DaikinFanUpdate | DaikinScheduleUpdate | DaikinThermostatUpdate | Partial<DaikinThermostatData>,
+  ): void {
     const device = this.devices.get(deviceId);
     if (!device) {
       this.log.error('Received update for unknown device %s.', deviceId);
@@ -330,6 +438,22 @@ export class DaikinOpenApiClient {
 
   private normalizeMode(value: unknown): ThermostatMode {
     return normalizeMode(value);
+  }
+
+  private canWriteMode(deviceId: string, mode: ThermostatMode): boolean {
+    if (mode === ThermostatMode.EMERGENCY_HEAT) {
+      return this.devices.get(deviceId)?.data?.mode === ThermostatMode.EMERGENCY_HEAT;
+    }
+    return this.getSupportedModes(deviceId).includes(mode);
+  }
+
+  private fallbackSupportedModes(data: DaikinThermostatData | undefined): ThermostatMode[] {
+    if (!data) {
+      return [ThermostatMode.OFF];
+    }
+
+    const mappedMode = data.mode === ThermostatMode.EMERGENCY_HEAT ? ThermostatMode.HEAT : data.mode;
+    return [...new Set([ThermostatMode.OFF, mappedMode])];
   }
 
   private debug(message: string, ...parameters: unknown[]): void {

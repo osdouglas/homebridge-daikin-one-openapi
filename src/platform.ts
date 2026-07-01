@@ -9,7 +9,9 @@ import type {
 } from 'homebridge';
 
 import { parsePlatformConfig } from './config.js';
+import { DaikinCirculationFanAccessory } from './circulationFanAccessory.js';
 import { DaikinOpenApiClient } from './daikinOpenApiClient.js';
+import { DaikinOutdoorUnitAccessory } from './outdoorUnitAccessory.js';
 import { DaikinThermostatAccessory } from './thermostatAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 import type { AccessoryContext, DaikinDevice, DaikinPlatformConfig } from './types.js';
@@ -88,6 +90,12 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
     const activeAccessoryIds = new Set<string>();
     for (const device of this.daikinClient.getDeviceList()) {
       activeAccessoryIds.add(this.registerThermostat(device).UUID);
+      if (this.daikinClient.hasOutdoorData(device.id)) {
+        activeAccessoryIds.add(this.registerOutdoorUnit(device).UUID);
+      }
+      if (this.daikinClient.hasFanCirculationData(device.id)) {
+        activeAccessoryIds.add(this.registerCirculationFan(device).UUID);
+      }
     }
 
     const staleAccessories = this.accessories.filter(accessory => !activeAccessoryIds.has(accessory.UUID));
@@ -114,6 +122,48 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
     }
 
     new DaikinThermostatAccessory(this, accessory, device.id);
+    return accessory;
+  }
+
+  private registerOutdoorUnit(device: DaikinDevice): PlatformAccessory<AccessoryContext> {
+    const uuid = this.api.hap.uuid.generate(`${device.id}:outdoor-unit`);
+    const displayName = this.accessoryName(device, 'Outdoor Unit');
+    let accessory = this.accessories.find(existing => existing.UUID === uuid);
+
+    if (accessory) {
+      accessory.displayName = displayName;
+      accessory.context.device = device;
+      this.log.info('Restoring outdoor unit from cache: %s', displayName);
+    } else {
+      accessory = new this.api.platformAccessory<AccessoryContext>(displayName, uuid);
+      accessory.context.device = device;
+      this.accessories.push(accessory);
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      this.log.info('Added outdoor unit: %s', displayName);
+    }
+
+    new DaikinOutdoorUnitAccessory(this, accessory, device.id);
+    return accessory;
+  }
+
+  private registerCirculationFan(device: DaikinDevice): PlatformAccessory<AccessoryContext> {
+    const uuid = this.api.hap.uuid.generate(`${device.id}:circulation-fan`);
+    const displayName = this.accessoryName(device, 'Circulation Fan');
+    let accessory = this.accessories.find(existing => existing.UUID === uuid);
+
+    if (accessory) {
+      accessory.displayName = displayName;
+      accessory.context.device = device;
+      this.log.info('Restoring circulation fan from cache: %s', displayName);
+    } else {
+      accessory = new this.api.platformAccessory<AccessoryContext>(displayName, uuid);
+      accessory.context.device = device;
+      this.accessories.push(accessory);
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      this.log.info('Added circulation fan: %s', displayName);
+    }
+
+    new DaikinCirculationFanAccessory(this, accessory, device.id);
     return accessory;
   }
 }

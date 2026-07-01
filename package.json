@@ -2,7 +2,7 @@
   "displayName": "Homebridge Daikon Plus",
   "name": "homebridge-daikon-plus",
   "version": "0.1.0",
-  "description": "Homebridge platform for Daikin One+ thermostats using Daikin One Open API integration tokens.",
+  "description": "Homebridge platform for Daikin One Open API-compatible thermostats.",
   "author": "osdouglas",
   "license": "MIT",
   "type": "module",

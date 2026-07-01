@@ -5,6 +5,7 @@ import { EquipmentStatus, ThermostatMode, type AccessoryContext } from './types.
 
 export class DaikinThermostatAccessory {
   private readonly service: Service;
+  private readonly scheduleService?: Service;
 
   public constructor(
     private readonly platform: DaikinOpenApiPlatform,
@@ -22,6 +23,7 @@ export class DaikinThermostatAccessory {
 
     this.service = accessory.getService(platform.Service.Thermostat) ?? accessory.addService(platform.Service.Thermostat);
     this.service.setCharacteristic(platform.Characteristic.Name, accessory.displayName);
+    this.service.getCharacteristic(platform.Characteristic.TargetHeatingCoolingState).setProps(this.targetHeatingCoolingStateProps());
 
     this.service.getCharacteristic(platform.Characteristic.CurrentHeatingCoolingState).onGet(() => {
       this.platform.client.requestRefreshNow();
@@ -86,6 +88,22 @@ export class DaikinThermostatAccessory {
       .getCharacteristic(platform.Characteristic.TemperatureDisplayUnits)
       .updateValue(platform.Characteristic.TemperatureDisplayUnits.CELSIUS);
 
+    if (this.platform.client.hasScheduleData(this.deviceId)) {
+      this.scheduleService =
+        accessory.getServiceById(platform.Service.Switch, 'schedule') ??
+        accessory.addService(platform.Service.Switch, 'Schedule', 'schedule');
+      this.scheduleService.setCharacteristic(platform.Characteristic.Name, 'Schedule');
+      this.scheduleService
+        .getCharacteristic(platform.Characteristic.On)
+        .onGet(() => {
+          this.platform.client.requestRefreshNow();
+          return this.platform.client.getScheduleEnabled(this.deviceId);
+        })
+        .onSet(async value => {
+          await this.platform.client.setScheduleEnabled(this.deviceId, Boolean(value));
+        });
+    }
+
     this.platform.client.addListener(this.deviceId, this.updateValues.bind(this));
   }
 
@@ -95,6 +113,7 @@ export class DaikinThermostatAccessory {
     const heatingProps = this.heatingThresholdProps();
     const coolingProps = this.coolingThresholdProps();
 
+    this.service.getCharacteristic(characteristic.TargetHeatingCoolingState).setProps(this.targetHeatingCoolingStateProps());
     this.service.getCharacteristic(characteristic.TargetTemperature).setProps(temperatureProps);
     this.service.getCharacteristic(characteristic.HeatingThresholdTemperature).setProps(heatingProps);
     this.service.getCharacteristic(characteristic.CoolingThresholdTemperature).setProps(coolingProps);
@@ -120,6 +139,7 @@ export class DaikinThermostatAccessory {
       characteristic.CurrentRelativeHumidity,
       this.clamp(this.platform.client.getCurrentHumidity(this.deviceId), 0, 100),
     );
+    this.scheduleService?.updateCharacteristic(characteristic.On, this.platform.client.getScheduleEnabled(this.deviceId));
   }
 
   private getCurrentHeatingCoolingState(): CharacteristicValue {
@@ -182,6 +202,25 @@ export class DaikinThermostatAccessory {
       minValue: this.platform.client.getSetpointMinimum(this.deviceId),
       maxValue: this.platform.client.getSetpointMaximum(this.deviceId),
       minStep: 0.5,
+    };
+  }
+
+  private targetHeatingCoolingStateProps(): { validValues: number[] } {
+    return {
+      validValues: this.platform.client.getSupportedModes(this.deviceId).map(mode => {
+        switch (mode) {
+          case ThermostatMode.HEAT:
+          case ThermostatMode.EMERGENCY_HEAT:
+            return this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
+          case ThermostatMode.COOL:
+            return this.platform.Characteristic.TargetHeatingCoolingState.COOL;
+          case ThermostatMode.AUTO:
+            return this.platform.Characteristic.TargetHeatingCoolingState.AUTO;
+          case ThermostatMode.OFF:
+          default:
+            return this.platform.Characteristic.TargetHeatingCoolingState.OFF;
+        }
+      }),
     };
   }
 

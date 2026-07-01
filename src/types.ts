@@ -14,6 +14,25 @@ export const enum EquipmentStatus {
   IDLE = 5,
 }
 
+export const enum ModeLimit {
+  NONE = 0,
+  ALL = 1,
+  HEAT_ONLY = 2,
+  COOL_ONLY = 3,
+}
+
+export const enum FanCirculateMode {
+  OFF = 0,
+  ON = 1,
+  SCHEDULE = 2,
+}
+
+export const enum FanCirculateSpeed {
+  LOW = 0,
+  MEDIUM = 1,
+  HIGH = 2,
+}
+
 export interface DaikinPlatformConfig {
   name: string;
   apiKey: string;
@@ -45,11 +64,11 @@ export interface DaikinDevice {
 export interface DaikinThermostatData {
   equipmentStatus: EquipmentStatus;
   mode: ThermostatMode;
-  modeLimit?: number;
+  modeLimit?: ModeLimit;
   modeEmHeatAvailable?: number | boolean;
   fan?: number;
-  fanCirculate?: number;
-  fanCirculateSpeed?: number;
+  fanCirculate?: FanCirculateMode;
+  fanCirculateSpeed?: FanCirculateSpeed;
   heatSetpoint: number;
   coolSetpoint: number;
   setpointDelta?: number;
@@ -64,6 +83,15 @@ export interface DaikinThermostatData {
 }
 
 export type DaikinThermostatUpdate = Pick<DaikinThermostatData, 'mode' | 'heatSetpoint' | 'coolSetpoint'>;
+
+export interface DaikinFanUpdate {
+  fanCirculate: FanCirculateMode;
+  fanCirculateSpeed?: FanCirculateSpeed;
+}
+
+export interface DaikinScheduleUpdate {
+  scheduleEnabled: boolean;
+}
 
 export interface AccessoryContext {
   device: DaikinDevice;

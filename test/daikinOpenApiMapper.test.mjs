@@ -8,20 +8,63 @@ test('normalizes numeric Open API strings into thermostat data', () => {
   const data = normalizeThermostatData({
     equipmentStatus: '3',
     mode: '1',
+    modeLimit: '2',
+    modeEmHeatAvailable: '1',
+    fan: '4',
+    fanCirculate: '2',
+    fanCirculateSpeed: '1',
     heatSetpoint: '19.5',
     coolSetpoint: '24',
     tempIndoor: '20.25',
     humIndoor: '48',
+    tempOutdoor: '6.75',
+    humOutdoor: '88',
     scheduleEnabled: '1',
   });
 
   assert.equal(data.equipmentStatus, 3);
   assert.equal(data.mode, 1);
+  assert.equal(data.modeLimit, 2);
+  assert.equal(data.modeEmHeatAvailable, 1);
+  assert.equal(data.fan, 4);
+  assert.equal(data.fanCirculate, 2);
+  assert.equal(data.fanCirculateSpeed, 1);
   assert.equal(data.heatSetpoint, 19.5);
   assert.equal(data.coolSetpoint, 24);
   assert.equal(data.tempIndoor, 20.25);
   assert.equal(data.humIndoor, 48);
+  assert.equal(data.tempOutdoor, 6.75);
+  assert.equal(data.humOutdoor, 88);
   assert.equal(data.scheduleEnabled, true);
+});
+
+test('normalizes outdoor, fan, schedule, and emergency heat fields independently', () => {
+  const data = normalizeThermostatData({
+    equipmentStatus: 4,
+    mode: 4,
+    modeLimit: 1,
+    modeEmHeatAvailable: true,
+    fan: 1,
+    fanCirculate: 0,
+    fanCirculateSpeed: 2,
+    heatSetpoint: 21,
+    coolSetpoint: 25,
+    tempIndoor: 20,
+    tempOutdoor: -3.5,
+    humOutdoor: 64,
+    scheduleEnabled: false,
+  });
+
+  assert.equal(data.equipmentStatus, 4);
+  assert.equal(data.mode, 4);
+  assert.equal(data.modeLimit, 1);
+  assert.equal(data.modeEmHeatAvailable, true);
+  assert.equal(data.fan, 1);
+  assert.equal(data.fanCirculate, 0);
+  assert.equal(data.fanCirculateSpeed, 2);
+  assert.equal(data.tempOutdoor, -3.5);
+  assert.equal(data.humOutdoor, 64);
+  assert.equal(data.scheduleEnabled, false);
 });
 
 test('falls back to safe mode and placeholder values for invalid payload fields', () => {

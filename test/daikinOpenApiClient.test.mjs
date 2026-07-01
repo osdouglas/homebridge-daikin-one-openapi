@@ -38,6 +38,11 @@ test('discovers devices and normalizes Open API thermostat data', async () => {
       setpointMaximum: '35',
       tempIndoor: '21.5',
       humIndoor: '42',
+      tempOutdoor: '5.5',
+      humOutdoor: '86',
+      fan: '4',
+      fanCirculate: '2',
+      fanCirculateSpeed: '1',
       scheduleEnabled: 'true',
     }),
   ]);
@@ -59,6 +64,12 @@ test('discovers devices and normalizes Open API thermostat data', async () => {
   assert.equal(client.getCoolingThreshold('zone-1'), 24);
   assert.equal(client.getCurrentTemperature('zone-1'), 21.5);
   assert.equal(client.getCurrentHumidity('zone-1'), 42);
+  assert.equal(client.getDevice('zone-1').data.tempOutdoor, 5.5);
+  assert.equal(client.getDevice('zone-1').data.humOutdoor, 86);
+  assert.equal(client.getDevice('zone-1').data.fan, 4);
+  assert.equal(client.getDevice('zone-1').data.fanCirculate, 2);
+  assert.equal(client.getDevice('zone-1').data.fanCirculateSpeed, 1);
+  assert.equal(client.getDevice('zone-1').data.scheduleEnabled, true);
 });
 
 test('writes msp payloads with Daikin auto-mode setpoint separation', async () => {
@@ -128,6 +139,154 @@ test('readonly mode skips writes without calling the Open API', async () => {
 
   assert.equal(didWrite, false);
   assert.equal(calls.length, 3);
+});
+
+test('writes schedule payloads to the Daikin schedule endpoint', async () => {
+  const { calls, installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+      scheduleEnabled: true,
+    }),
+    emptyResponse(),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+  const didWrite = await client.setScheduleEnabled('zone-1', false);
+
+  assert.equal(didWrite, true);
+  const writeCall = calls.at(-1);
+  assert.equal(writeCall.url, `${devicesUrl}/zone-1/schedule`);
+  assert.equal(writeCall.init.method, 'PUT');
+  assert.deepEqual(JSON.parse(writeCall.init.body), {
+    scheduleEnabled: false,
+  });
+  assert.equal(client.getDevice('zone-1').data.scheduleEnabled, false);
+});
+
+test('writes circulation fan payloads to the Daikin fan endpoint', async () => {
+  const { calls, installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      fanCirculate: 0,
+      fanCirculateSpeed: 0,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+    emptyResponse(),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+  const didWrite = await client.setFanCirculation('zone-1', {
+    fanCirculate: 1,
+    fanCirculateSpeed: 2,
+  });
+
+  assert.equal(didWrite, true);
+  const writeCall = calls.at(-1);
+  assert.equal(writeCall.url, `${devicesUrl}/zone-1/fan`);
+  assert.equal(writeCall.init.method, 'PUT');
+  assert.deepEqual(JSON.parse(writeCall.init.body), {
+    fanCirculate: 1,
+    fanCirculateSpeed: 2,
+  });
+  assert.equal(client.getDevice('zone-1').data.fanCirculate, 1);
+  assert.equal(client.getDevice('zone-1').data.fanCirculateSpeed, 2);
+});
+
+test('blocks unsupported mode writes before calling the Daikin msp endpoint', async () => {
+  const { calls, installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      modeLimit: 2,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+  const didWrite = await client.setMode('zone-1', 2);
+
+  assert.equal(didWrite, false);
+  assert.equal(calls.length, 3);
+  assert.equal(client.getMode('zone-1'), 1);
+});
+
+test('preserves emergency heat mode when writing setpoints', async () => {
+  const { calls, installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 3,
+      mode: 4,
+      modeEmHeatAvailable: true,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 19,
+    }),
+    emptyResponse(),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+  assert.equal(client.getMode('zone-1'), 4);
+
+  const didWrite = await client.setTargetTemperature('zone-1', 21);
+
+  assert.equal(didWrite, true);
+  const writeCall = calls.at(-1);
+  assert.equal(writeCall.url, `${devicesUrl}/zone-1/msp`);
+  assert.deepEqual(JSON.parse(writeCall.init.body), {
+    mode: 4,
+    heatSetpoint: 21,
+    coolSetpoint: 24,
+  });
+  assert.equal(client.getMode('zone-1'), 4);
+  assert.equal(client.getTargetTemperature('zone-1'), 21);
 });
 
 test('refreshes expired access tokens before writes', async () => {
@@ -202,8 +361,8 @@ function fetchQueue(responses) {
     installFetch() {
       globalThis.fetch = async (url, init = {}) => {
         const response = responses.shift();
-        assert.ok(response, `Unexpected fetch call to ${url}`);
         calls.push({ url: String(url), init });
+        assert.ok(response, `Unexpected fetch call to ${url}`);
         return response;
       };
     },
