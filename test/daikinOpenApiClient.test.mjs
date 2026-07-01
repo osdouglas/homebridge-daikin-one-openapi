@@ -351,6 +351,40 @@ test('logs payload validation warnings while keeping safe normalized state', asy
   assert.match(warnings[0], /unsupported mode 255/);
 });
 
+test('parses refreshed payload once while logging validation warnings', async () => {
+  const warnings = [];
+  let modeReads = 0;
+  const payload = {
+    equipmentStatus: 5,
+    get mode() {
+      modeReads += 1;
+      return 255;
+    },
+    heatSetpoint: 20,
+    coolSetpoint: 24,
+    tempIndoor: 21,
+  };
+  const http = httpQueue([
+    { accessToken: 'token-1', accessTokenExpiresIn: 3600 },
+    [
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ],
+    payload,
+  ]);
+
+  const client = new DaikinOpenApiClient(config(), log({ warnings }), http);
+
+  await client.initialize();
+
+  assert.equal(modeReads, 1);
+  assert.equal(client.getMode('zone-1'), 0);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /unsupported mode 255/);
+});
+
 test('keeps unknown payload fields out of default warnings', async () => {
   const infos = [];
   const warnings = [];
@@ -490,6 +524,20 @@ function fetchQueue(responses) {
         assert.ok(response, `Unexpected fetch call to ${url}`);
         return response;
       };
+    },
+  };
+}
+
+function httpQueue(responses) {
+  const calls = [];
+
+  return {
+    calls,
+    async fetchJson(url, init = {}) {
+      const response = responses.shift();
+      calls.push({ url: String(url), init });
+      assert.notEqual(response, undefined, `Unexpected fetch call to ${url}`);
+      return response;
     },
   };
 }

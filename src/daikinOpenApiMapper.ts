@@ -7,48 +7,19 @@ import {
   type DaikinThermostatData,
 } from './types.js';
 
-const KNOWN_THERMOSTAT_FIELDS = new Set([
-  'equipmentStatus',
-  'mode',
-  'modeLimit',
-  'modeEmHeatAvailable',
-  'fan',
-  'fanCirculate',
-  'fanCirculateSpeed',
-  'heatSetpoint',
-  'coolSetpoint',
-  'setpointDelta',
-  'setpointMinimum',
-  'setpointMaximum',
-  'tempIndoor',
-  'humIndoor',
-  'tempOutdoor',
-  'humOutdoor',
-  'scheduleEnabled',
-  'geofencingEnabled',
-]);
+type ThermostatField = keyof DaikinThermostatData;
+type ThermostatFieldValue = DaikinThermostatData[ThermostatField];
 
-export function normalizeThermostatData(payload: Record<string, unknown>): DaikinThermostatData {
-  return {
-    equipmentStatus: numberFrom(payload.equipmentStatus, EquipmentStatus.IDLE) as EquipmentStatus,
-    mode: normalizeMode(payload.mode),
-    modeLimit: normalizeModeLimit(payload.modeLimit),
-    modeEmHeatAvailable: optionalBooleanOrNumber(payload.modeEmHeatAvailable),
-    fan: optionalNumber(payload.fan),
-    fanCirculate: normalizeFanCirculateMode(payload.fanCirculate),
-    fanCirculateSpeed: normalizeFanCirculateSpeed(payload.fanCirculateSpeed),
-    heatSetpoint: numberFrom(payload.heatSetpoint, 20),
-    coolSetpoint: numberFrom(payload.coolSetpoint, 24),
-    setpointDelta: optionalNumber(payload.setpointDelta),
-    setpointMinimum: optionalNumber(payload.setpointMinimum),
-    setpointMaximum: optionalNumber(payload.setpointMaximum),
-    tempIndoor: numberFrom(payload.tempIndoor, -270),
-    humIndoor: optionalNumber(payload.humIndoor),
-    tempOutdoor: optionalNumber(payload.tempOutdoor),
-    humOutdoor: optionalNumber(payload.humOutdoor),
-    scheduleEnabled: optionalBoolean(payload.scheduleEnabled),
-    geofencingEnabled: optionalBoolean(payload.geofencingEnabled),
-  };
+interface ParsedThermostatField {
+  value: ThermostatFieldValue;
+  missingRequired?: string;
+  invalidRequiredNumber?: string;
+  unsupportedEnum?: string;
+}
+
+interface ThermostatFieldSpec {
+  field: ThermostatField;
+  parse(value: unknown): ParsedThermostatField;
 }
 
 export interface ThermostatPayloadValidation {
@@ -56,149 +27,210 @@ export interface ThermostatPayloadValidation {
   developerNotes: string[];
 }
 
-export function validateThermostatPayload(payload: Record<string, unknown>): ThermostatPayloadValidation {
+export interface ThermostatPayloadParseResult extends ThermostatPayloadValidation {
+  data: DaikinThermostatData;
+}
+
+const EQUIPMENT_STATUSES = [
+  EquipmentStatus.COOLING,
+  EquipmentStatus.OVERCOOL_DEHUMIDIFYING,
+  EquipmentStatus.HEATING,
+  EquipmentStatus.FAN,
+  EquipmentStatus.IDLE,
+] as const;
+
+const THERMOSTAT_MODES = [
+  ThermostatMode.OFF,
+  ThermostatMode.HEAT,
+  ThermostatMode.COOL,
+  ThermostatMode.AUTO,
+  ThermostatMode.EMERGENCY_HEAT,
+] as const;
+
+const MODE_LIMITS = [ModeLimit.NONE, ModeLimit.ALL, ModeLimit.HEAT_ONLY, ModeLimit.COOL_ONLY] as const;
+const FAN_CIRCULATE_MODES = [FanCirculateMode.OFF, FanCirculateMode.ON, FanCirculateMode.SCHEDULE] as const;
+const FAN_CIRCULATE_SPEEDS = [FanCirculateSpeed.LOW, FanCirculateSpeed.MEDIUM, FanCirculateSpeed.HIGH] as const;
+
+const MODE_FIELD = requiredEnumNumber('mode', ThermostatMode.OFF, THERMOSTAT_MODES);
+const MODE_LIMIT_FIELD = optionalEnumNumber('modeLimit', MODE_LIMITS, { preserveUnknown: true });
+
+const THERMOSTAT_FIELDS = [
+  requiredEnumNumber('equipmentStatus', EquipmentStatus.IDLE, EQUIPMENT_STATUSES, { preserveUnknown: true }),
+  MODE_FIELD,
+  MODE_LIMIT_FIELD,
+  optionalBooleanOrNumber('modeEmHeatAvailable'),
+  optionalNumber('fan'),
+  optionalEnumNumber('fanCirculate', FAN_CIRCULATE_MODES),
+  optionalEnumNumber('fanCirculateSpeed', FAN_CIRCULATE_SPEEDS),
+  requiredNumber('heatSetpoint', 20),
+  requiredNumber('coolSetpoint', 24),
+  optionalNumber('setpointDelta'),
+  optionalNumber('setpointMinimum'),
+  optionalNumber('setpointMaximum'),
+  requiredNumber('tempIndoor', -270),
+  optionalNumber('humIndoor'),
+  optionalNumber('tempOutdoor'),
+  optionalNumber('humOutdoor'),
+  optionalBoolean('scheduleEnabled'),
+  optionalBoolean('geofencingEnabled'),
+] as const satisfies readonly ThermostatFieldSpec[];
+
+const KNOWN_THERMOSTAT_FIELDS = new Set<ThermostatField>(THERMOSTAT_FIELDS.map(spec => spec.field));
+
+export function parseThermostatPayload(payload: Record<string, unknown>): ThermostatPayloadParseResult {
+  const data: Partial<Record<ThermostatField, ThermostatFieldValue>> = {};
+  const missingRequired: string[] = [];
+  const invalidRequiredNumbers: string[] = [];
+  const unsupportedEnums: string[] = [];
+
+  for (const spec of THERMOSTAT_FIELDS) {
+    const parsed = spec.parse(payload[spec.field]);
+    data[spec.field] = parsed.value;
+    if (parsed.missingRequired) {
+      missingRequired.push(parsed.missingRequired);
+    }
+    if (parsed.invalidRequiredNumber) {
+      invalidRequiredNumbers.push(parsed.invalidRequiredNumber);
+    }
+    if (parsed.unsupportedEnum) {
+      unsupportedEnums.push(parsed.unsupportedEnum);
+    }
+  }
+
   return {
-    warnings: [
-      ...missingRequiredFieldIssues(payload),
-      ...invalidRequiredNumberIssues(payload),
-      ...invalidEnumIssues(payload),
-    ],
+    data: data as DaikinThermostatData,
+    warnings: [...missingRequired, ...invalidRequiredNumbers, ...unsupportedEnums],
     developerNotes: unknownFieldIssues(payload),
   };
 }
 
-function missingRequiredFieldIssues(payload: Record<string, unknown>): string[] {
-  return ['equipmentStatus', 'mode', 'heatSetpoint', 'coolSetpoint', 'tempIndoor']
-    .filter(field => payload[field] === undefined || payload[field] === null || isBlankString(payload[field]))
-    .map(field => `missing required field ${field}`);
+export function normalizeThermostatData(payload: Record<string, unknown>): DaikinThermostatData {
+  return parseThermostatPayload(payload).data;
 }
 
-function invalidRequiredNumberIssues(payload: Record<string, unknown>): string[] {
-  return ['equipmentStatus', 'mode', 'heatSetpoint', 'coolSetpoint', 'tempIndoor']
-    .filter(field =>
-      payload[field] !== undefined &&
-      payload[field] !== null &&
-      !isBlankString(payload[field]) &&
-      !Number.isFinite(numberFrom(payload[field], Number.NaN)),
-    )
-    .map(field => `invalid numeric field ${field}`);
+export function validateThermostatPayload(payload: Record<string, unknown>): ThermostatPayloadValidation {
+  const { warnings, developerNotes } = parseThermostatPayload(payload);
+  return { warnings, developerNotes };
 }
 
-function invalidEnumIssues(payload: Record<string, unknown>): string[] {
-  const issues: string[] = [];
-  const equipmentStatus = optionalNumber(payload.equipmentStatus);
-  const mode = optionalNumber(payload.mode);
-  const modeLimit = optionalNumber(payload.modeLimit);
-  const fanCirculate = optionalNumber(payload.fanCirculate);
-  const fanCirculateSpeed = optionalNumber(payload.fanCirculateSpeed);
+export function normalizeModeLimit(value: unknown): ModeLimit | undefined {
+  return MODE_LIMIT_FIELD.parse(value).value as ModeLimit | undefined;
+}
 
-  if (equipmentStatus !== undefined && !isKnownEquipmentStatus(equipmentStatus)) {
-    issues.push(`unsupported equipmentStatus ${String(payload.equipmentStatus)}`);
+export function normalizeMode(value: unknown): ThermostatMode {
+  return MODE_FIELD.parse(value).value as ThermostatMode;
+}
+
+function requiredNumber(field: ThermostatField, fallback: number): ThermostatFieldSpec {
+  return {
+    field,
+    parse(value) {
+      return parseRequiredNumberField(field, value, fallback);
+    },
+  };
+}
+
+function requiredEnumNumber(
+  field: ThermostatField,
+  fallback: number,
+  supportedValues: readonly number[],
+  options: { preserveUnknown?: boolean } = {},
+): ThermostatFieldSpec {
+  return {
+    field,
+    parse(value) {
+      const parsed = parseRequiredNumberField(field, value, fallback);
+      if (parsed.missingRequired || parsed.invalidRequiredNumber) {
+        return parsed;
+      }
+      if (!supportedValues.includes(parsed.value as number)) {
+        return {
+          ...parsed,
+          value: options.preserveUnknown ? parsed.value : fallback,
+          unsupportedEnum: `unsupported ${field} ${String(value)}`,
+        };
+      }
+      return parsed;
+    },
+  };
+}
+
+function optionalNumber(field: ThermostatField): ThermostatFieldSpec {
+  return {
+    field,
+    parse(value) {
+      return { value: numberOrUndefined(value) };
+    },
+  };
+}
+
+function optionalEnumNumber(
+  field: ThermostatField,
+  supportedValues: readonly number[],
+  options: { preserveUnknown?: boolean } = {},
+): ThermostatFieldSpec {
+  return {
+    field,
+    parse(value) {
+      const parsed = numberOrUndefined(value);
+      if (parsed === undefined) {
+        return { value: undefined };
+      }
+      if (!supportedValues.includes(parsed)) {
+        return {
+          value: options.preserveUnknown ? parsed : undefined,
+          unsupportedEnum: `unsupported ${field} ${String(value)}`,
+        };
+      }
+      return { value: parsed };
+    },
+  };
+}
+
+function optionalBoolean(field: ThermostatField): ThermostatFieldSpec {
+  return {
+    field,
+    parse(value) {
+      return { value: booleanOrUndefined(value) };
+    },
+  };
+}
+
+function optionalBooleanOrNumber(field: ThermostatField): ThermostatFieldSpec {
+  return {
+    field,
+    parse(value) {
+      return { value: booleanOrNumberOrUndefined(value) };
+    },
+  };
+}
+
+function parseRequiredNumberField(field: ThermostatField, value: unknown, fallback: number): ParsedThermostatField {
+  if (isMissingValue(value)) {
+    return {
+      value: fallback,
+      missingRequired: `missing required field ${field}`,
+    };
   }
-  if (mode !== undefined && !isKnownMode(mode)) {
-    issues.push(`unsupported mode ${String(payload.mode)}`);
+
+  const parsed = numberOrUndefined(value);
+  if (parsed === undefined) {
+    return {
+      value: fallback,
+      invalidRequiredNumber: `invalid numeric field ${field}`,
+    };
   }
-  if (modeLimit !== undefined && !isKnownModeLimit(modeLimit)) {
-    issues.push(`unsupported modeLimit ${String(payload.modeLimit)}`);
-  }
-  if (fanCirculate !== undefined && !isKnownFanCirculateMode(fanCirculate)) {
-    issues.push(`unsupported fanCirculate ${String(payload.fanCirculate)}`);
-  }
-  if (fanCirculateSpeed !== undefined && !isKnownFanCirculateSpeed(fanCirculateSpeed)) {
-    issues.push(`unsupported fanCirculateSpeed ${String(payload.fanCirculateSpeed)}`);
-  }
-  return issues;
-}
 
-function isKnownEquipmentStatus(value: number): boolean {
-  return [
-    EquipmentStatus.COOLING,
-    EquipmentStatus.OVERCOOL_DEHUMIDIFYING,
-    EquipmentStatus.HEATING,
-    EquipmentStatus.FAN,
-    EquipmentStatus.IDLE,
-  ].includes(value as EquipmentStatus);
-}
-
-function isKnownMode(value: number): boolean {
-  return [
-    ThermostatMode.OFF,
-    ThermostatMode.HEAT,
-    ThermostatMode.COOL,
-    ThermostatMode.AUTO,
-    ThermostatMode.EMERGENCY_HEAT,
-  ].includes(value as ThermostatMode);
-}
-
-function isKnownModeLimit(value: number): boolean {
-  return [ModeLimit.NONE, ModeLimit.ALL, ModeLimit.HEAT_ONLY, ModeLimit.COOL_ONLY].includes(value as ModeLimit);
-}
-
-function isKnownFanCirculateMode(value: number): boolean {
-  return [FanCirculateMode.OFF, FanCirculateMode.ON, FanCirculateMode.SCHEDULE].includes(value as FanCirculateMode);
-}
-
-function isKnownFanCirculateSpeed(value: number): boolean {
-  return [FanCirculateSpeed.LOW, FanCirculateSpeed.MEDIUM, FanCirculateSpeed.HIGH].includes(value as FanCirculateSpeed);
+  return { value: parsed };
 }
 
 function unknownFieldIssues(payload: Record<string, unknown>): string[] {
   return Object.keys(payload)
-    .filter(field => !KNOWN_THERMOSTAT_FIELDS.has(field))
+    .filter(field => !KNOWN_THERMOSTAT_FIELDS.has(field as ThermostatField))
     .map(field => `unexpected field ${field}`);
 }
 
-export function normalizeModeLimit(value: unknown): ModeLimit | undefined {
-  const modeLimit = optionalNumber(value);
-  switch (modeLimit) {
-    case ModeLimit.NONE:
-    case ModeLimit.ALL:
-    case ModeLimit.HEAT_ONLY:
-    case ModeLimit.COOL_ONLY:
-      return modeLimit;
-    default:
-      return modeLimit as ModeLimit | undefined;
-  }
-}
-
-export function normalizeMode(value: unknown): ThermostatMode {
-  const mode = numberFrom(value, ThermostatMode.OFF);
-  switch (mode) {
-    case ThermostatMode.HEAT:
-    case ThermostatMode.COOL:
-    case ThermostatMode.AUTO:
-    case ThermostatMode.EMERGENCY_HEAT:
-      return mode;
-    default:
-      return ThermostatMode.OFF;
-  }
-}
-
-function normalizeFanCirculateMode(value: unknown): FanCirculateMode | undefined {
-  const mode = optionalNumber(value);
-  switch (mode) {
-    case FanCirculateMode.OFF:
-    case FanCirculateMode.ON:
-    case FanCirculateMode.SCHEDULE:
-      return mode;
-    default:
-      return undefined;
-  }
-}
-
-function normalizeFanCirculateSpeed(value: unknown): FanCirculateSpeed | undefined {
-  const speed = optionalNumber(value);
-  switch (speed) {
-    case FanCirculateSpeed.LOW:
-    case FanCirculateSpeed.MEDIUM:
-    case FanCirculateSpeed.HIGH:
-      return speed;
-    default:
-      return undefined;
-  }
-}
-
-function optionalBoolean(value: unknown): boolean | undefined {
+function booleanOrUndefined(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') {
     return value;
   }
@@ -211,16 +243,20 @@ function optionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
-function optionalBooleanOrNumber(value: unknown): number | boolean | undefined {
+function booleanOrNumberOrUndefined(value: unknown): number | boolean | undefined {
   if (typeof value === 'boolean') {
     return value;
   }
-  return optionalNumber(value);
+  return numberOrUndefined(value);
 }
 
-function optionalNumber(value: unknown): number | undefined {
+function numberOrUndefined(value: unknown): number | undefined {
   const numberValue = numberFrom(value, Number.NaN);
   return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function isMissingValue(value: unknown): boolean {
+  return value === undefined || value === null || isBlankString(value);
 }
 
 function isBlankString(value: unknown): boolean {

@@ -2,7 +2,7 @@ import { hrtime } from 'node:process';
 
 import type { Logging } from 'homebridge';
 
-import { normalizeMode, normalizeThermostatData, validateThermostatPayload } from './daikinOpenApiMapper.js';
+import { normalizeMode, parseThermostatPayload, type ThermostatPayloadValidation } from './daikinOpenApiMapper.js';
 import { FetchJsonHttpClient, type JsonHttpClient } from './httpClient.js';
 import { applySetpointPolicy } from './setpointPolicy.js';
 import { EquipmentStatus, FanCirculateMode, FanCirculateSpeed, ModeLimit, ThermostatMode } from './types.js';
@@ -316,12 +316,13 @@ export class DaikinOpenApiClient {
     await this.ensureToken();
     for (const device of this.devices.values()) {
       try {
-        const data = await this.authorizedGet<Record<string, unknown>>(`${DEVICES_URL}/${device.id}`);
+        const payload = await this.authorizedGet<Record<string, unknown>>(`${DEVICES_URL}/${device.id}`);
         if (this.config.developerMode) {
-          this.log.info('Raw Daikin payload for %s: %s', device.id, JSON.stringify(data));
+          this.log.info('Raw Daikin payload for %s: %s', device.id, JSON.stringify(payload));
         }
-        this.logPayloadValidation(device.id, validateThermostatPayload(data));
-        this.updateDeviceData(device.id, normalizeThermostatData(data));
+        const parsedPayload = parseThermostatPayload(payload);
+        this.logPayloadValidation(device.id, parsedPayload);
+        this.updateDeviceData(device.id, parsedPayload.data);
         this.notify(device.id);
       } catch (error) {
         this.logError(`Unable to refresh ${device.name} (${device.id}).`, error);
@@ -496,7 +497,7 @@ export class DaikinOpenApiClient {
 
   private logPayloadValidation(
     deviceId: string,
-    validation: ReturnType<typeof validateThermostatPayload>,
+    validation: ThermostatPayloadValidation,
   ): void {
     this.logChangedPayloadWarnings(deviceId, validation.warnings);
 
